@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "linkedin": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-linkedin"],
+      "env": {
+        "LINKEDIN_ACCESS_TOKEN": "<your_linkedin_access_token>"
+      },
+      "disabled": true,
+      "_comment": "Set disabled to false and add your token to enable LinkedIn posting"
+    },
+    "email": {
+      "command": "node",
+      "args": ["/path/to/email-mcp/index.js"],
+      "env": {
+        "GMAIL_CREDENTIALS": "/mnt/d/personal-ai-employee/gmail_credentials.json"
+      },
+      "disabled": true,
+      "_comment": "Configure path to email MCP server and enable for email sending"
+    },
+    "browser": {
+      "command": "npx",
+      "args": ["@anthropic/browser-mcp"],
+      "env": {
+        "HEADLESS": "true"
+      },
+      "disabled": true,
+      "_comment": "Enable for browser automation (payment portals, web actions)"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/mnt/d/personal-ai-employee"],
+      "disabled": false,
+      "_comment": "Built-in filesystem access for vault operations"
+    }
+  },
+  "_notes": {
+    "setup_linkedin": "1. Get LinkedIn API token from https://developer.linkedin.com\n2. Replace <your_linkedin_access_token> above\n3. Set disabled to false",
+    "setup_email": "1. Install email MCP: npm install -g @modelcontextprotocol/server-email\n2. Update path above\n3. Set disabled to false",
+    "test_mcp": "Run: claude --print 'Test MCP connection' to verify"
+  }
+}

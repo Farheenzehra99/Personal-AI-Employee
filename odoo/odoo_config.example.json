@@ -1,0 +1,19 @@
+{
+  "_comment": "Odoo Accounting Configuration",
+  "_instructions": "Copy this file and update with your Odoo credentials",
+  
+  "url": "http://localhost:8069",
+  "db": "ai_employee",
+  "username": "admin@test.com",
+  "password": "measum110",
+  
+  "_notes": [
+    "url: Your Odoo server URL (local: http://localhost:8069)",
+    "db: Database name you created in Odoo",
+    "username: Your Odoo login email",
+    "password: Your Odoo password",
+    "",
+    "SECURITY: Do not commit this file to version control!",
+    "Add to .gitignore: odoo_config.json"
+  ]
+}

@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""
+Ralph Loop - Autonomous Multi-Step Task Completion
+
+Keeps Claude Code working until tasks are fully complete.
+Creates Plan.md and executes multi-step reasoning.
+
+Usage:
+    python ralph_loop.py "Your task description here"
+    python ralph_loop.py "Process all files in Needs_Action" --max-iterations 10
+    python ralph_loop.py --file task.md
+"""
+
+import os
+import sys
+import time
+import json
+import logging
+import subprocess
+import argparse
+from pathlib import Path
+from datetime import datetime
+from typing import Optional, List, Dict
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class RalphLoop:
+    """Autonomous multi-step task completion loop"""
+    
+    def __init__(
+        self,
+        vault_path: str = None,
+        max_iterations: int = 10,
+        timeout_per_iteration: int = 300,
+        completion_marker: str = "TASK_COMPLETE"
+    ):
+        self.vault_path = Path(vault_path) if vault_path else Path(__file__).parent.absolute()
+        self.max_iterations = max_iterations
+        self.timeout_per_iteration = timeout_per_iteration
+        self.completion_marker = completion_marker
+        
+        # Paths
+        self.plan_file = self.vault_path / 'Plan.md'
+        self.needs_action = self.vault_path / 'Needs_Action'
+        self.done_folder = self.vault_path / 'Done'
+        self.logs_folder = self.vault_path / 'Logs'
+        
+        # Ensure folders exist
+        for folder in [self.needs_action, self.done_folder, self.logs_folder]:
+            folder.mkdir(parents=True, exist_ok=True)
+        
+        # State
+        self.iteration = 0
+        self.task_complete = False
+        self.errors = []
+        
+    def run(self, task: str) -> bool:
+        """
+        Run Ralph Loop for a task
+        
+        Args:
+            task: Task description to complete
+            
+        Returns:
+            True if task completed successfully
+        """
+        logger.info("=" * 60)
+        logger.info("RALPH LOOP - Autonomous Task Completion")
+        logger.info("=" * 60)
+        logger.info(f"Task: {task}")
+        logger.info(f"Max iterations: {self.max_iterations}")
+        logger.info(f"Vault: {self.vault_path}")
+        logger.info("=" * 60)
+        
+        # Step 1: Create initial Plan.md
+        logger.info("\n📝 Step 1: Creating initial plan...")
+        self._create_initial_plan(task)
+        
+        # Step 2: Run iterations
+        logger.info("\n🔄 Step 2: Starting autonomous loop...")
+        
+        for self.iteration in range(1, self.max_iterations + 1):
+            logger.info(f"\n{'='*60}")
+            logger.info(f"📍 Iteration {self.iteration}/{self.max_iterations}")
+            logger.info(f"{'='*60}")
+            
+            # Check if task is already complete
+            if self._is_task_complete(task):
+                logger.info("✅ Task already complete!")
+                self.task_complete = True
+                break
+            
+            # Execute iteration
+            success = self._execute_iteration(task)
+            
+            if not success:
+                logger.warning(f"⚠️  Iteration {self.iteration} had issues")
+                self.errors.append(f"Iteration {self.iteration} failed")
+            
+            # Check completion again
+            if self._is_task_complete(task):
+                logger.info("✅ Task completed!")
+                self.task_complete = True
+                break
+            
+            # Wait before next iteration
+            if self.iteration < self.max_iterations:
+                logger.info(f"⏳ Waiting 2 seconds before next iteration...")
+                time.sleep(2)
+        
+        # Step 3: Final summary
+        logger.info(f"\n{'='*60}")
+        logger.info("📊 RALPH LOOP SUMMARY")
+        logger.info(f"{'='*60}")
+        logger.info(f"Task: {task}")
+        logger.info(f"Iterations completed: {self.iteration}")
+        logger.info(f"Task complete: {self.task_complete}")
+        logger.info(f"Errors: {len(self.errors)}")
+        
+        if self.errors:
+            logger.info("Error log:")
+            for error in self.errors:
+                logger.info(f"  - {error}")
+        
+        # Save loop log
+        self._save_loop_log(task)
+        
+        logger.info(f"{'='*60}")
+        
+        return self.task_complete
+    
+    def _create_initial_plan(self, task: str):
+        """Create initial Plan.md with task breakdown"""
+        
+        plan_content = f"""# Task Plan
+
+## Task
+{task}
+
+## Created
+{datetime.now().isoformat()}
+
+## Status
+In Progress
+
+## Steps
+1. Analyze task requirements
+2. Break down into subtasks
+3. Execute each subtask
+4. Verify completion
+5. Move to Done
+
+## Progress
+- [ ] Task analysis
+- [ ] Subtask breakdown
+- [ ] Execution
+- [ ] Verification
+- [ ] Completion
+
+## Notes
+Auto-generated by Ralph Loop
+"""
+        
+        self.plan_file.write_text(plan_content)
+        logger.info(f"✓ Plan.md created at {self.plan_file}")
+    
+    def _execute_iteration(self, task: str) -> bool:
+        """Execute one iteration of the loop"""
+        
+        try:
+            # Read current plan
+            if self.plan_file.exists():
+                current_plan = self.plan_file.read_text()
+            else:
+                current_plan = ""
+            
+            # Build Claude prompt
+            prompt = self._build_prompt(task, current_plan)
+            
+            # Run Claude Code
+            logger.info("🤖 Running Claude Code...")
+            result = self._run_claude(prompt)
+            
+            if result['success']:
+                logger.info("✓ Claude Code executed successfully")
+                
+                # Update plan with results
+                self._update_plan(task, result['output'])
+                
+                return True
+            else:
+                logger.error(f"✗ Claude Code failed: {result.get('error', 'Unknown error')}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"✗ Iteration error: {e}")
+            return False
+    
+    def _build_prompt(self, task: str, current_plan: str) -> str:
+        """Build prompt for Claude Code"""
+        
+        # Check what's in Needs_Action
+        pending_files = list(self.needs_action.glob('*.md')) if self.needs_action.exists() else []
+        
+        prompt = f"""You are an autonomous AI assistant running in Ralph Loop mode.
+
+## Current Task
+{task}
+
+## Current Plan
+{current_plan}
+
+## Pending Items
+{len(pending_files)} files in Needs_Action/
+
+## Instructions
+1. Analyze the task and current state
+2. Break down into actionable steps
+3. Execute the next step
+4. Update Plan.md with progress
+5. If task is complete, output: <promise>TASK_COMPLETE</promise>
+
+## Rules
+- Be thorough and complete
+- Update Plan.md after each action
+- Move completed items to Done/
+- Output TASK_COMPLETE only when fully done
+
+## Current Working Directory
+{self.vault_path}
+
+Proceed with the task now.
+"""
+        
+        return prompt
+    
+    def _run_claude(self, prompt: str) -> Dict:
+        """Run Claude Code with the prompt"""
+        
+        try:
+            # Try using claude command
+            cmd = [
+                'claude',
+                '--print', prompt,
+                '--dangerously-skip-permissions'
+            ]
+            
+            logger.info(f"Running: {' '.join(cmd[:3])}...")
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_per_iteration,
+                cwd=str(self.vault_path)
+            )
+            
+            return {
+                'success': result.returncode == 0,
+                'output': result.stdout,
+                'error': result.stderr if result.returncode != 0 else None
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"⏰ Claude Code timed out after {self.timeout_per_iteration}s")
+            return {
+                'success': False,
+                'error': f'Timeout after {self.timeout_per_iteration}s'
+            }
+        except FileNotFoundError:
+            logger.error("❌ Claude Code not found. Install with: npm install -g @anthropic/claude-code")
+            return {
+                'success': False,
+                'error': 'Claude Code not installed'
+            }
+        except Exception as e:
+            logger.error(f"❌ Error running Claude: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _update_plan(self, task: str, claude_output: str):
+        """Update Plan.md with Claude's output"""
+        
+        if self.plan_file.exists():
+            current_plan = self.plan_file.read_text()
+        else:
+            current_plan = f"# Task Plan\n\n## Task\n{task}\n"
+        
+        # Add iteration results
+        update = f"""
+
+## Iteration {self.iteration} - {datetime.now().isoformat()}
+
+### Claude Output
+{claude_output[:2000]}  # Limit output size
+
+### Status
+Iteration complete
+
+"""
+        
+        updated_plan = current_plan + update
+        self.plan_file.write_text(updated_plan)
+        logger.info(f"✓ Plan.md updated (iteration {self.iteration})")
+    
+    def _is_task_complete(self, task: str) -> bool:
+        """Check if task is complete"""
+        
+        # Check 1: Plan.md has TASK_COMPLETE marker
+        if self.plan_file.exists():
+            plan_content = self.plan_file.read_text()
+            if 'TASK_COMPLETE' in plan_content or '<promise>TASK_COMPLETE</promise>' in plan_content:
+                logger.info("✓ Found TASK_COMPLETE marker in Plan.md")
+                return True
+        
+        # Check 2: All files moved to Done
+        if self.needs_action.exists():
+            pending = list(self.needs_action.glob('*.md'))
+            if len(pending) == 0 and 'process all' in task.lower():
+                logger.info("✓ All files moved to Done/")
+                return True
+        
+        # Check 3: Plan.md says "Complete"
+        if self.plan_file.exists():
+            plan_content = self.plan_file.read_text()
+            if '## Status\nComplete' in plan_content or '## Status\n✅ Complete' in plan_content:
+                logger.info("✓ Plan.md marked as Complete")
+                return True
+        
+        return False
+    
+    def _save_loop_log(self, task: str):
+        """Save loop execution log"""
+        
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'task': task,
+            'iterations': self.iteration,
+            'completed': self.task_complete,
+            'errors': self.errors,
+            'vault_path': str(self.vault_path)
+        }
+        
+        log_file = self.logs_folder / f'ralph_loop_{datetime.now().strftime("%Y-%m-%d")}.json'
+        
+        # Load existing logs
+        if log_file.exists():
+            try:
+                logs = json.loads(log_file.read_text())
+            except:
+                logs = []
+        else:
+            logs = []
+        
+        logs.append(log_entry)
+        log_file.write_text(json.dumps(logs, indent=2))
+        
+        logger.info(f"✓ Loop log saved to {log_file}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Ralph Loop - Autonomous Multi-Step Task Completion',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python ralph_loop.py "Process all files in Needs_Action"
+  python ralph_loop.py "Create LinkedIn post about AI trends" --max-iterations 5
+  python ralph_loop.py --file task.md
+  python ralph_loop.py "Review and respond to emails" --timeout 600
+        """
+    )
+    
+    parser.add_argument('task', nargs='?', type=str, help='Task description to complete')
+    parser.add_argument('--file', type=str, help='Read task from file')
+    parser.add_argument('--max-iterations', type=int, default=10, help='Max loop iterations (default: 10)')
+    parser.add_argument('--timeout', type=int, default=300, help='Timeout per iteration in seconds (default: 300)')
+    parser.add_argument('--vault-path', type=str, help='Path to vault directory')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    
+    args = parser.parse_args()
+    
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    # Get task
+    if args.task:
+        task = args.task
+    elif args.file:
+        task_file = Path(args.file)
+        if task_file.exists():
+            task = task_file.read_text()
+        else:
+            logger.error(f"Task file not found: {task_file}")
+            sys.exit(1)
+    else:
+        parser.print_help()
+        sys.exit(1)
+    
+    # Create and run Ralph Loop
+    ralph = RalphLoop(
+        vault_path=args.vault_path,
+        max_iterations=args.max_iterations,
+        timeout_per_iteration=args.timeout
+    )
+    
+    success = ralph.run(task)
+    
+    # Exit code
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

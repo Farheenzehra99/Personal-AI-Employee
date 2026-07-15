@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+
+# Credentials & Secrets
+.env
+*.credentials
+*_credentials.json
+token.json
+gmail_credentials.json
+odoo/odoo_config.json
+odoo/odoo.conf
+
+# Session Data
+.linkedin_session/
+.facebook_session/
+.instagram_session/
+.twitter_session/
+.whatsapp_session/
+.whatsapp_session_test/
+.linkedin_session_account1_backup/
+
+# Odoo
+odoo/backups/*.sql
+odoo/backups/*.dump
+odoo/backups/*.tar.gz
+odoo/odoo-data/
+
+# Logs (keep recent, archive old)
+Logs/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
